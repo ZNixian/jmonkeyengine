@@ -35,7 +35,9 @@ import com.jme3.app.VREnvironment;
 import com.jme3.input.vr.OculusVR;
 import com.jme3.input.vr.VRAPI;
 import com.jme3.math.ColorRGBA;
+import com.jme3.math.Quaternion;
 import com.jme3.math.Vector2f;
+import com.jme3.math.Vector3f;
 import com.jme3.renderer.Camera;
 import com.jme3.renderer.ViewPort;
 import com.jme3.scene.Spatial;
@@ -45,11 +47,8 @@ import java.nio.IntBuffer;
 import java.util.Iterator;
 import java.util.logging.Logger;
 
-import org.lwjgl.PointerBuffer;
-
 import org.lwjgl.ovr.*;
 
-import static org.lwjgl.BufferUtils.*;
 import static org.lwjgl.ovr.OVR.*;
 import static org.lwjgl.ovr.OVRErrorCode.*;
 
@@ -100,14 +99,14 @@ public class VRViewManagerOculus extends AbstractVRViewManager {
     public void render() {
         for (int eye = 0; eye < 2; eye++) {
             // TODO add eyePoses
-//            OVRPosef eyePose = eyePoses[eye];
-//            layer0.RenderPose(eye, eyePose);
+            OVRPosef eyePose = hardware.getEyePosesPtr()[eye];
+            hardware.getLayer0().RenderPose(eye, eyePose);
 
             IntBuffer currentIndexB = BufferUtils.createIntBuffer(1);
             ovr_GetTextureSwapChainCurrentIndex(session(), hardware.getChain(), currentIndexB);
             int index = currentIndexB.get();
 
-            (eye == 0 ? leftViewPort : rightViewPort).setOutputFrameBuffer(hardware.getFramebuffers()[index]);
+            (eye == ovrEye_Left ? leftViewPort : rightViewPort).setOutputFrameBuffer(hardware.getFramebuffers()[index]);
         }
 
         // Now the game will render into the buffers given to us by LibOVR
