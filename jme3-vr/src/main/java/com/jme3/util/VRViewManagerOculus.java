@@ -64,6 +64,13 @@ public class VRViewManagerOculus extends AbstractVRViewManager {
     private final VREnvironment environment;
     private final OculusVR hardware;
 
+    // Copied from OSVR
+    //final & temp values for camera calculations
+    private final Vector3f finalPosition = new Vector3f();
+    private final Quaternion finalRotation = new Quaternion();
+    private final Vector3f hmdPos = new Vector3f();
+    private final Quaternion hmdRot = new Quaternion();
+
     public VRViewManagerOculus(VREnvironment environment) {
         this.environment = environment;
 
@@ -93,12 +100,75 @@ public class VRViewManagerOculus extends AbstractVRViewManager {
         // TODO
 
         hardware.updatePose();
+
+        // TODO deduplicate
+        if (environment != null) {
+            // grab the observer
+            Object obs = environment.getObserver();
+            Quaternion objRot;
+            Vector3f objPos;
+            if (obs instanceof Camera) {
+                objRot = ((Camera) obs).getRotation();
+                objPos = ((Camera) obs).getLocation();
+            } else {
+                objRot = ((Spatial) obs).getWorldRotation();
+                objPos = ((Spatial) obs).getWorldTranslation();
+            }
+            // grab the hardware handle
+            VRAPI dev = environment.getVRHardware();
+            if (dev != null) {
+                // update the HMD's position & orientation
+                dev.getPositionAndOrientation(hmdPos, hmdRot);
+                if (obs != null) {
+                    // update hmdPos based on obs rotation
+                    finalRotation.set(objRot);
+                    finalRotation.mult(hmdPos, hmdPos);
+                    finalRotation.multLocal(hmdRot);
+                }
+
+                finalizeCamera(dev.getHMDVectorPoseLeftEye(), objPos, leftCamera);
+                finalizeCamera(dev.getHMDVectorPoseRightEye(), objPos, rightCamera);
+            } else {
+                leftCamera.setFrame(objPos, objRot);
+                rightCamera.setFrame(objPos, objRot);
+            }
+
+            if (environment.hasTraditionalGUIOverlay()) {
+                // update the mouse?
+                environment.getVRMouseManager().update(tpf);
+
+                // update GUI position?
+                if (environment.getVRGUIManager().wantsReposition || environment.getVRGUIManager().getPositioningMode() != VRGUIPositioningMode.MANUAL) {
+                    environment.getVRGUIManager().positionGuiNow(tpf);
+                    environment.getVRGUIManager().updateGuiQuadGeometricState();
+                }
+            }
+        } else {
+            throw new IllegalStateException("This VR view manager is not attached to any VR environment.");
+        }
+    }
+
+    /**
+     * Place the camera within the scene.
+     *
+     * @param eyePos      the eye position.
+     * @param obsPosition the observer position.
+     * @param cam         the camera to place.
+     */
+    private void finalizeCamera(Vector3f eyePos, Vector3f obsPosition, Camera cam) {
+        finalRotation.mult(eyePos, finalPosition);
+        finalPosition.addLocal(hmdPos);
+        if (obsPosition != null) {
+            finalPosition.addLocal(obsPosition);
+        }
+        finalPosition.y += getHeightAdjustment();
+        cam.setFrame(finalPosition, finalRotation);
     }
 
     @Override
     public void render() {
         for (int eye = 0; eye < 2; eye++) {
-            // TODO add eyePoses
+            // TODO do we need this? Don't we set the camera positions ourselves?
             OVRPosef eyePose = hardware.getEyePosesPtr()[eye];
             hardware.getLayer0().RenderPose(eye, eyePose);
 
